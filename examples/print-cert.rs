@@ -215,7 +215,7 @@ fn print_x509_info(x509: &X509Certificate) -> io::Result<()> {
     {
         println!("Unknown (feature 'validate' not enabled)");
     }
-    #[cfg(any(feature = "verify", feature = "verify-aws"))]
+    #[cfg(any(feature = "verify", feature = "verify-aws", feature = "verify-rc-p521"))]
     {
         print!("Signature verification: ");
         if x509.subject() == x509.issuer() {
