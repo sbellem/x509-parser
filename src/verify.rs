@@ -2,11 +2,18 @@ use crate::prelude::*;
 use crate::signature_algorithm::RsaSsaPssParams;
 use asn1_rs::{Any, BitString, DerParser};
 use oid_registry::{
-    OID_EC_P256, OID_NIST_EC_P384, OID_NIST_HASH_SHA256, OID_NIST_HASH_SHA384,
+    OID_EC_P256, OID_NIST_EC_P384, OID_NIST_EC_P521, OID_NIST_HASH_SHA256, OID_NIST_HASH_SHA384,
     OID_NIST_HASH_SHA512, OID_PKCS1_RSASSAPSS, OID_PKCS1_SHA1WITHRSA, OID_PKCS1_SHA256WITHRSA,
     OID_PKCS1_SHA384WITHRSA, OID_PKCS1_SHA512WITHRSA, OID_SHA1_WITH_RSA, OID_SIG_ECDSA_WITH_SHA256,
-    OID_SIG_ECDSA_WITH_SHA384, OID_SIG_ED25519,
+    OID_SIG_ECDSA_WITH_SHA384, OID_SIG_ECDSA_WITH_SHA512, OID_SIG_ED25519,
 };
+
+#[cfg(feature = "verify-rc-p521")]
+use p521::ecdsa::{VerifyingKey, Signature as P521Signature};
+#[cfg(feature = "verify-rc-p521")]
+use p521::ecdsa::signature::Verifier;
+//#[cfg(feature = "verify-rc-p521")]
+//use p521::elliptic_curve::sec1::ToEncodedPoint;
 
 // Since the `signature` object is similar in ring and in aws-lc-rs, we just use simple logic
 // to determine which one to use.
@@ -20,7 +27,8 @@ use ring::signature;
 ///
 /// `public_key` is the public key of the **signer**.
 ///
-/// Not all algorithms are supported, this function is limited to what `aws_lc_rs` or `ring` supports.
+/// Not all algorithms are supported, this function is limited to what `aws_lc_rs` or `ring` supports,
+/// but now also supports ECDSA with P-521 via RustCrypto if the `verify-rc-p521` feature is enabled.
 pub fn verify_signature(
     public_key: &SubjectPublicKeyInfo,
     signature_algorithm: &AlgorithmIdentifier,
@@ -31,6 +39,33 @@ pub fn verify_signature(
         algorithm: signature_algorithm,
         parameters: signature_algorithm_parameters,
     } = &signature_algorithm;
+
+    // --- P-521 ECDSA Support (RustCrypto) ---
+    #[cfg(feature = "verify-rc-p521")]
+    {
+        // OID for ECDSA with SHA-512 and secp521r1
+        if *signature_algorithm == OID_SIG_ECDSA_WITH_SHA512 {
+            // Is the curve P-521?
+            let curve_oid = public_key.algorithm.parameters.as_ref()
+                .and_then(|p| p.as_oid().ok());
+            if curve_oid == Some(OID_NIST_EC_P521) {
+                // Get public key bytes (uncompressed SEC1)
+                let pubkey_bytes = public_key.subject_public_key.as_raw_slice();
+                // The bitstring usually starts with 0x04 (uncompressed marker)
+                let verifying_key = VerifyingKey::from_sec1_bytes(pubkey_bytes)
+                    .map_err(|_| X509Error::InvalidSPKI)?;
+                // Signature is ASN.1 DER encoded
+                let signature_bytes = signature_value.as_raw_slice();
+                let signature = P521Signature::from_der(signature_bytes)
+                    .map_err(|_| X509Error::InvalidSignatureValue)?;
+                // Message is the raw_data (tbsCertificate)
+                verifying_key.verify(raw_data, &signature)
+                    .map_err(|_| X509Error::SignatureVerificationError)?;
+                return Ok(());
+            }
+        }
+    }
+    // --- End P-521 Patch ---
 
     // identify verification algorithm
     let verification_alg: &dyn signature::VerificationAlgorithm = if *signature_algorithm
@@ -76,7 +111,6 @@ fn get_ec_curve_sha(
     sha_len: usize,
 ) -> Option<&'static dyn signature::VerificationAlgorithm> {
     let curve_oid = pubkey_alg.parameters.as_ref()?.as_oid().ok()?;
-    // let curve_oid = pubkey_alg.parameters.as_ref()?.as_oid().ok()?;
     if curve_oid == OID_EC_P256 {
         match sha_len {
             256 => Some(&signature::ECDSA_P256_SHA256_ASN1),

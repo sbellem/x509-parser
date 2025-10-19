@@ -40,6 +40,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 default = []
 verify-aws = ["aws-lc-rs"]
 verify = ["ring"]
+verify-rc-p521 = ["p521", "ecdsa", "verify"]
 validate = []
 
 [dependencies]
@@ -53,6 +54,8 @@ ring = { version="0.17.12", optional=true }
 rusticata-macros = "5.0"
 thiserror = "2.0"
 time = { version="0.3.35", features=["formatting"] }
+p521 = { version = "0.13", optional = true }
+ecdsa = { version = "0.16", features = ["pem"], optional = true }
 
 [dev-dependencies]
 hex-literal = "0.4"

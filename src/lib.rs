@@ -157,7 +157,8 @@ pub mod time;
 #[cfg(feature = "validate")]
 #[cfg_attr(docsrs, doc(cfg(feature = "validate")))]
 pub mod validate;
-#[cfg(any(feature = "verify", feature = "verify-aws"))]
+//#[cfg(any(feature = "verify", feature = "verify-aws"))]
+#[cfg(any(feature = "verify", feature = "verify-aws", feature = "verify-rc-p521"))]
 #[cfg_attr(docsrs, doc(cfg(any(feature = "verify", feature = "verify-aws"))))]
 pub mod verify;
 pub mod visitor;
